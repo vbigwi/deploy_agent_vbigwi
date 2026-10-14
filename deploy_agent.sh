@@ -47,6 +47,18 @@ ok()    { echo "[OK]    $*"; }
 warn()  { echo "[WARN]  $*"; }
 error() { echo "[ERROR] $*" >&2; }
 
+# read one line into the variable named by $2. If stdin is closed (Ctrl+D or
+# an exhausted pipe) there is no point asking the same question forever, so
+# bail out with a clear message instead.
+prompt() {
+    local __text="$1" __var="$2"
+    if ! read -r -p "$__text" "$__var"; then
+        echo
+        error "input closed before the question was answered, aborting."
+        exit 1
+    fi
+}
+
 # true when $1 is a whole number (no sign, no decimals, not empty)
 is_number() {
     [[ "$1" =~ ^[0-9]+$ ]]
@@ -56,7 +68,7 @@ is_number() {
 ask_yes_no() {
     local question="$1" answer
     while true; do
-        read -r -p "$question [y/n]: " answer
+        prompt "$question [y/n]: " answer
         case "$answer" in
             y|Y|yes|YES) return 0 ;;
             n|N|no|NO)   return 1 ;;
@@ -146,7 +158,7 @@ preflight_checks() {
 ask_project_name() {
     local name
     while true; do
-        read -r -p "Enter a name for the project (attendance_tracker_<name>): " name
+        prompt "Enter a name for the project (attendance_tracker_<name>): " name
         if [ -z "$name" ]; then
             echo "  name cannot be empty"
         elif [[ ! "$name" =~ ^[A-Za-z0-9_-]+$ ]]; then
@@ -185,7 +197,7 @@ copy_roster_from_template() {
     available=$(( $(wc -l < "$template") - 1 ))   # minus the header
 
     while true; do
-        read -r -p "How many students to copy from the template (1-$available)? " count
+        prompt "How many students to copy from the template (1-$available)? " count
         if ! is_number "$count"; then
             echo "  please enter a whole number"
         elif [ "$count" -lt 1 ] || [ "$count" -gt "$available" ]; then
@@ -208,7 +220,7 @@ generate_fresh_roster() {
     local max=${#SAMPLE_NAMES[@]} count i
 
     while true; do
-        read -r -p "How many students to generate (1-$max)? " count
+        prompt "How many students to generate (1-$max)? " count
         if ! is_number "$count"; then
             echo "  please enter a whole number"
         elif [ "$count" -lt 1 ] || [ "$count" -gt "$max" ]; then
@@ -249,7 +261,7 @@ populate_files() {
     echo "  B) generate a fresh roster with new students"
     local choice
     while true; do
-        read -r -p "Choose A or B: " choice
+        prompt "Choose A or B: " choice
         case "$choice" in
             a|A) copy_roster_from_template; break ;;
             b|B) generate_fresh_roster; break ;;
@@ -273,7 +285,7 @@ set_permissions() {
 read_threshold() {
     local label="$1" default="$2" __out="$3" value
     while true; do
-        read -r -p "  $label threshold [$default]: " value
+        prompt "  $label threshold [$default]: " value
         value="${value:-$default}"
         if ! is_number "$value"; then
             echo "  '$value' is not a number, try again"
@@ -348,7 +360,7 @@ deploy() {
 
 run_app() {
     local name="$1" dir
-    [ -z "$name" ] && read -r -p "Project name to run (attendance_tracker_<name>): " name
+    [ -z "$name" ] && prompt "Project name to run (attendance_tracker_<name>): " name
     dir="attendance_tracker_${name}"
 
     if [ ! -d "$dir" ]; then
@@ -385,7 +397,7 @@ run_app() {
 
 archive_logs() {
     local name="$1" dir stamp log archived=0
-    [ -z "$name" ] && read -r -p "Project name to archive (attendance_tracker_<name>): " name
+    [ -z "$name" ] && prompt "Project name to archive (attendance_tracker_<name>): " name
     dir="attendance_tracker_${name}"
 
     if [ ! -d "$dir" ]; then
@@ -449,7 +461,7 @@ show_menu() {
         echo "  2) Run the application"
         echo "  3) Archive the log files"
         echo "  4) Quit"
-        read -r -p "Choose an option [1-4]: " choice
+        prompt "Choose an option [1-4]: " choice
         case "$choice" in
             1) deploy ;;
             2) run_app "" ;;
