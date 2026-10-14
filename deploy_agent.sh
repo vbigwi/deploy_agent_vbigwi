@@ -8,6 +8,9 @@
 #   2. run     - launch attendance_checker.py inside a deployed project
 #   3. archive - copy reports/*.log into timestamped archive folders
 #
+# Ctrl+C / Ctrl+Z are trapped while a deployment is in progress. The half
+# built project gets zipped and removed so nothing broken is left behind.
+#
 # Author: vbigwi
 
 # always work relative to where this script lives so the templates/ folder
@@ -18,6 +21,7 @@ cd "$SCRIPT_DIR" || exit 1
 
 PROJECT_NAME=""   # what the user typed
 PROJECT_DIR=""    # attendance_tracker_<PROJECT_NAME>
+DEPLOY_IN_PROGRESS=0
 
 # sample data used when the user wants a freshly generated roster (option B)
 SAMPLE_NAMES=(
@@ -59,6 +63,47 @@ ask_yes_no() {
             *) echo "  please answer y or n" ;;
         esac
     done
+}
+
+# ---------------------------------------------------------------------------
+# signal handling (only active while deploying)
+# ---------------------------------------------------------------------------
+
+on_interrupt() {
+    echo
+    echo "=================================================="
+    echo " Deployment interrupted! (Ctrl+C / Ctrl+Z received)"
+    echo "=================================================="
+
+    if [ -n "$PROJECT_DIR" ] && [ -d "$PROJECT_DIR" ]; then
+        local zip_name="${PROJECT_DIR}_archive.zip"
+        info "zipping what was created so far -> $zip_name"
+        rm -f "$zip_name"
+        if zip -r -q "$zip_name" "$PROJECT_DIR"; then
+            ok "archive saved: $SCRIPT_DIR/$zip_name"
+        else
+            error "zip failed, leaving $PROJECT_DIR in place so nothing is lost"
+            exit 130
+        fi
+        # don't leave a half made project lying around
+        rm -rf "$PROJECT_DIR"
+        ok "removed incomplete directory $PROJECT_DIR"
+    else
+        info "nothing was created yet, nothing to archive"
+    fi
+
+    echo "Closing session."
+    exit 130
+}
+
+enable_trap() {
+    DEPLOY_IN_PROGRESS=1
+    trap on_interrupt SIGINT SIGTSTP
+}
+
+disable_trap() {
+    DEPLOY_IN_PROGRESS=0
+    trap - SIGINT SIGTSTP
 }
 
 # ---------------------------------------------------------------------------
@@ -275,11 +320,16 @@ deploy() {
     preflight_checks
     echo
 
+    # from here on a Ctrl+C / Ctrl+Z zips and removes the partial project
+    enable_trap
+
     ask_project_name
     create_structure
     populate_files
     set_permissions
     update_thresholds
+
+    disable_trap   # the python app handles its own Ctrl+C from here
 
     echo
     ok "deployment of $PROJECT_DIR complete"
