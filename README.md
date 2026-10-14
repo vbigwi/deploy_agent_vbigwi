@@ -4,6 +4,8 @@ Shell script that bootstraps, runs and archives the **Student Attendance Tracker
 (`attendance_checker.py`). The Python app is not modified, everything here is the
 shell automation around it.
 
+**Walkthrough video:** https://youtu.be/rUOC1Zce88k (approach, each feature, a live marking session and the Ctrl+C / Ctrl+Z demo)
+
 ```
 deploy_agent_vbigwi/
 ├── deploy_agent.sh          # the script
