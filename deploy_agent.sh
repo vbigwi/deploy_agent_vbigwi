@@ -286,6 +286,93 @@ deploy() {
     echo
     echo "Structure:"
     find "$PROJECT_DIR" | sort | sed 's/^/  /'
+
+    echo
+    info "verifying the deployment by launching the application..."
+    run_app "$PROJECT_NAME"
+}
+
+# ---------------------------------------------------------------------------
+# feature 2: run
+# ---------------------------------------------------------------------------
+
+run_app() {
+    local name="$1" dir
+    [ -z "$name" ] && read -r -p "Project name to run (attendance_tracker_<name>): " name
+    dir="attendance_tracker_${name}"
+
+    if [ ! -d "$dir" ]; then
+        error "$dir does not exist. Deploy it first."
+        return 1
+    fi
+    if [ ! -f "$dir/attendance_checker.py" ]; then
+        error "$dir/attendance_checker.py is missing, this project looks broken."
+        return 1
+    fi
+
+    echo
+    echo "=== Feature 2: Run the application ($dir) ==="
+    echo "Handing the terminal over to attendance_checker.py..."
+    echo
+    (
+        cd "$dir" || exit 1
+        python3 attendance_checker.py
+    )
+    local status=$?
+    echo
+    if [ "$status" -eq 0 ]; then
+        ok "attendance_checker.py finished successfully"
+        info "you can archive the logs with: ./deploy_agent.sh archive $name"
+    else
+        warn "attendance_checker.py exited with status $status"
+    fi
+    return "$status"
+}
+
+# ---------------------------------------------------------------------------
+# feature 3: archive
+# ---------------------------------------------------------------------------
+
+archive_logs() {
+    local name="$1" dir stamp log archived=0
+    [ -z "$name" ] && read -r -p "Project name to archive (attendance_tracker_<name>): " name
+    dir="attendance_tracker_${name}"
+
+    if [ ! -d "$dir" ]; then
+        error "$dir does not exist. Nothing to archive."
+        return 1
+    fi
+
+    echo
+    echo "=== Feature 3: Archive the log files ($dir) ==="
+
+    # one timestamp for the whole run so both logs match up
+    stamp=$(date +%Y%m%d_%H%M%S)
+
+    for log in attendance absent; do
+        local src="$dir/reports/$log.log"
+        local dest_dir="$dir/archives/$log"
+        local dest="$dest_dir/${log}_${stamp}.log"
+
+        if [ ! -f "$src" ]; then
+            warn "$src not found, skipping (no $log entries were written)"
+            continue
+        fi
+
+        mkdir -p "$dest_dir" || { error "could not create $dest_dir"; continue; }
+        if cp "$src" "$dest"; then
+            ok "archived $log.log -> $dest"
+            archived=$(( archived + 1 ))
+        else
+            error "failed to copy $src"
+        fi
+    done
+
+    if [ "$archived" -eq 0 ]; then
+        warn "no logs were archived. Run the application first to generate them."
+    else
+        info "$archived log file(s) archived under $dir/archives/"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -294,9 +381,11 @@ deploy() {
 
 usage() {
     cat <<USAGE
-Usage: $0 [deploy]
+Usage: $0 [deploy | run <name> | archive <name>]
 
   deploy          create a new attendance_tracker_<name> project
+  run <name>      start attendance_checker.py inside attendance_tracker_<name>
+  archive <name>  archive reports/*.log of attendance_tracker_<name>
 
 Without arguments an interactive menu is shown.
 USAGE
@@ -313,8 +402,8 @@ show_menu() {
         read -r -p "Choose an option [1-4]: " choice
         case "$choice" in
             1) deploy ;;
-            2) echo "  not implemented yet" ;;
-            3) echo "  not implemented yet" ;;
+            2) run_app "" ;;
+            3) archive_logs "" ;;
             4) echo "Bye."; exit 0 ;;
             *) echo "  invalid option, pick 1-4" ;;
         esac
@@ -324,6 +413,8 @@ show_menu() {
 case "${1:-}" in
     "")                 show_menu ;;
     deploy|--deploy)    deploy ;;
+    run|--run)          run_app "${2:-}" ;;
+    archive|--archive)  archive_logs "${2:-}" ;;
     -h|--help|help)     usage ;;
     *) error "unknown option: $1"; usage; exit 1 ;;
 esac
