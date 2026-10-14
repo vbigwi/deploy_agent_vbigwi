@@ -223,6 +223,52 @@ set_permissions() {
     echo "  $(stat -c '%A' "$PROJECT_DIR/Helpers/config.json")  Helpers/config.json    (owner read/write only)"
 }
 
+# reads one threshold into the variable named by $3, keeps the default when
+# the user just presses enter
+read_threshold() {
+    local label="$1" default="$2" __out="$3" value
+    while true; do
+        read -r -p "  $label threshold [$default]: " value
+        value="${value:-$default}"
+        if ! is_number "$value"; then
+            echo "  '$value' is not a number, try again"
+        elif [ "$value" -gt 100 ]; then
+            echo "  it is a percentage, must be between 0 and 100"
+        else
+            printf -v "$__out" '%s' "$value"
+            return
+        fi
+    done
+}
+
+update_thresholds() {
+    local config="$PROJECT_DIR/Helpers/config.json"
+    local warning failure
+
+    echo
+    if ! ask_yes_no "Do you want to update the attendance alert thresholds?"; then
+        info "keeping default thresholds (warning 75, failure 50)"
+        return
+    fi
+
+    while true; do
+        read_threshold "warning" 75 warning
+        read_threshold "failure" 50 failure
+        if [ "$failure" -ge "$warning" ]; then
+            echo "  failure ($failure) should be lower than warning ($warning), try again"
+        else
+            break
+        fi
+    done
+
+    # only touch the two threshold lines, leave the rest of the file as is
+    sed -i "s/\"warning\": [0-9]*/\"warning\": $warning/" "$config"
+    sed -i "s/\"failure\": [0-9]*/\"failure\": $failure/" "$config"
+
+    ok "thresholds updated in Helpers/config.json:"
+    grep -E '"(warning|failure)"' "$config"
+}
+
 deploy() {
     echo
     echo "=== Feature 1: Deploy the application ==="
@@ -233,6 +279,7 @@ deploy() {
     create_structure
     populate_files
     set_permissions
+    update_thresholds
 
     echo
     ok "deployment of $PROJECT_DIR complete"
